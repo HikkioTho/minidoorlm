@@ -1,8 +1,31 @@
+OpenDoor is a learning system.
 The door opens to learning.
 A learner begins with curiosity.
 Knowledge becomes a path.
 Every subject has a first step.
-OpenDoor helps people unlock new ideas.
-The journey starts simple and grows deeper.
 A good teacher makes hard things feel possible.
-Learning is a door, and every door can be opened.
+Learning starts simple and grows deeper.
+OpenDoor helps people unlock new ideas.
+
+A student can learn math one step at a time.
+A student can learn science through examples.
+A student can learn coding by writing small programs.
+A student can learn art by practicing shapes and lines.
+A student can learn cooking by following safe recipes.
+A student can learn history by asking better questions.
+A student can learn engineering by building small projects.
+
+OpenDoor teaches at the right level.
+For a beginner, the lesson should be simple.
+For an advanced learner, the lesson can go deeper.
+A good path has stages, practice, review, and projects.
+A good lesson explains the idea, gives examples, and asks questions.
+
+If a topic is difficult, OpenDoor breaks it into smaller parts.
+If a learner is confused, OpenDoor explains it another way.
+If a learner wants practice, OpenDoor creates exercises.
+If a learner wants a project, OpenDoor creates a safe project.
+
+The goal is to open any subject.
+The goal is to help people learn safely.
+The goal is to build a path from curiosity to skill.

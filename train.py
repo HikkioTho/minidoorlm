@@ -1,3 +1,4 @@
+import csv
 import torch
 from model import MiniTransformerLanguageModel
 
@@ -43,6 +44,13 @@ val_data = data[n:]
 
 def get_batch(split):
     source = train_data if split == "train" else val_data
+
+    # Make sure the source is large enough for block_size.
+    if len(source) <= block_size:
+        raise ValueError(
+            f"{split} data is too small for block_size={block_size}. "
+            f"Add more text to data/input.txt or lower block_size."
+        )
 
     ix = torch.randint(len(source) - block_size, (batch_size,))
 
@@ -91,13 +99,25 @@ print(f"Training on: {device}")
 print(f"Vocabulary size: {vocab_size}")
 print("Starting transformer training...")
 
+training_log = []
+
 for step in range(max_iters):
     if step % eval_interval == 0:
         losses = estimate_loss()
+
+        train_loss = losses["train"].item()
+        val_loss = losses["val"].item()
+
         print(
-            f"step {step}: train loss {losses['train']:.4f}, "
-            f"val loss {losses['val']:.4f}"
+            f"step {step}: train loss {train_loss:.4f}, "
+            f"val loss {val_loss:.4f}"
         )
+
+        training_log.append({
+            "step": step,
+            "train_loss": train_loss,
+            "val_loss": val_loss,
+        })
 
     xb, yb = get_batch("train")
 
@@ -106,6 +126,7 @@ for step in range(max_iters):
     loss.backward()
     optimizer.step()
 
+# Save model checkpoint
 torch.save(
     {
         "model_state_dict": model.state_dict(),
@@ -120,5 +141,12 @@ torch.save(
     "minidoorlm_transformer.pt"
 )
 
+# Save training log for visualization
+with open("training_log.csv", "w", newline="", encoding="utf-8") as f:
+    writer = csv.DictWriter(f, fieldnames=["step", "train_loss", "val_loss"])
+    writer.writeheader()
+    writer.writerows(training_log)
+
+print("Saved training log to training_log.csv")
 print("Transformer training complete.")
 print("Saved model to minidoorlm_transformer.pt")

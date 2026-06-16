@@ -2,3 +2,6 @@
 __pycache__/
 *.pyc
 *.pt
+training_log.csv
+training_loss.png
+logs/
