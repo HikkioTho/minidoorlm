@@ -3,5 +3,10 @@ __pycache__/
 *.pyc
 *.pt
 training_log.csv
+training_tokens_log.csv
 training_loss.png
 logs/
+uploads/
+exports/
+data/training_candidates/
+data/quarantine/
