@@ -28,10 +28,8 @@ class Head(nn.Module):
 
         weights = q @ k.transpose(-2, -1) * channels ** -0.5
 
-        weights = weights.masked_fill(
-            self.tril[:time, :time] == 0,
-            float("-inf")
-        )
+        mask = torch.tril(torch.ones(time, time, device=x.device)) == 0
+        weights = weights.masked_fill(mask, float("-inf"))
 
         weights = F.softmax(weights, dim=-1)
         weights = self.dropout(weights)
