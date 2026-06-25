@@ -199,6 +199,23 @@ PrivacyGuard helps detect and redact:
 
 This allows OpenDoor to improve over time without harvesting private user data.
 
+## Model Quality Controls
+
+MiniDoorLM includes early model quality controls to avoid common AI system failures.
+
+The project tracks:
+
+- dataset size
+- example boundaries
+- `<END>` stop tokens
+- repeated lines
+- unique vocabulary
+- generation structure
+- overfitting through validation loss
+- best-checkpoint saving
+
+A future goal is to prevent model collapse by avoiding uncontrolled training on raw AI-generated outputs or private user prompts.
+
 ---
 
 ## Media Upload Safety
