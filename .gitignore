@@ -1,6 +1,4 @@
 .venv/
-__pycache__/
-*.pyc
 *.pt
 training_log.csv
 training_tokens_log.csv
