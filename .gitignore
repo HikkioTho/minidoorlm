@@ -4,9 +4,12 @@ __pycache__/
 *.pt
 training_log.csv
 training_tokens_log.csv
+overnight_training_log.csv
 training_loss.png
+training_samples/
 logs/
 uploads/
 exports/
+output/
 data/training_candidates/
 data/quarantine/
