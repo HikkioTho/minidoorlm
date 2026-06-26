@@ -169,14 +169,41 @@ def average_example_length(examples: List[str]) -> float:
 
 
 def repeated_line_report(text: str) -> List[Tuple[str, int]]:
+    expected_repeated_lines = {
+        "### EXAMPLE START",
+        "<END>",
+        "OpenDoor:",
+        "Level: Beginner.",
+    }
+
+    expected_repeated_prefixes = (
+        "User:",
+        "Door opened:",
+        "Learning Mode:",
+        "First Lesson:",
+        "Analogy:",
+        "Safety Note:",
+        "Safety Boundary:",
+        "Example Safety Mode:",
+        "Active Recall:",
+    )
+
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     counts = Counter(lines)
 
-    repeated = [
-        (line, count)
-        for line, count in counts.items()
-        if count > 3 and not line.startswith(("User:", "OpenDoor:", "Level:", "Learning Mode:"))
-    ]
+    repeated = []
+
+    for line, count in counts.items():
+        if count <= 3:
+            continue
+
+        if line in expected_repeated_lines:
+            continue
+
+        if line.startswith(expected_repeated_prefixes):
+            continue
+
+        repeated.append((line, count))
 
     return sorted(repeated, key=lambda item: item[1], reverse=True)
 
