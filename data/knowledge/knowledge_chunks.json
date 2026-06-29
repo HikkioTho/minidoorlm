@@ -1,5 +1,6 @@
 {
   "chunk_count": 1,
+  "source_dir": "data/sources/public",
   "chunks": [
     {
       "source_name": "opendoor_beta_notes.md",

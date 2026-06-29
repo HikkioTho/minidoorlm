@@ -7,6 +7,7 @@ training_tokens_log.csv
 overnight_training_log.csv
 training_loss.png
 training_samples/
+runtime/
 logs/
 uploads/
 exports/

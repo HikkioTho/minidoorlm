@@ -30,7 +30,6 @@ def clean_topic_list(raw_value: str) -> List[str]:
         return []
 
     pieces = raw_value.replace("\n", ",").split(",")
-
     cleaned = []
 
     for piece in pieces:
@@ -73,7 +72,7 @@ def load_profile(name: str) -> StudentProfile:
     path = profile_file_path(name)
 
     if not path.exists():
-        raise FileNotFoundError(f"Profile not found: {path}")
+        raise FileNotFoundError("Profile not found.")
 
     payload = json.loads(path.read_text(encoding="utf-8"))
 

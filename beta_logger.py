@@ -14,13 +14,6 @@ def ensure_log_dir() -> Path:
 
 
 def write_jsonl(filename: str, payload: Dict[str, Any]) -> Path:
-    """
-    Write one structured log event as JSONL.
-
-    JSONL is easy to append, easy to inspect, and does not require a database
-    for the beta demo.
-    """
-
     log_dir = ensure_log_dir()
     path = log_dir / filename
 
@@ -40,16 +33,6 @@ def log_beta_event(
     message: str,
     metadata: Optional[Dict[str, Any]] = None,
 ) -> Path:
-    """
-    Log normal beta activity.
-
-    Examples:
-        profile_saved
-        assignment_created
-        topic_rejected
-        submission_checked
-    """
-
     return write_jsonl(
         filename="beta_events.jsonl",
         payload={
@@ -65,10 +48,6 @@ def log_beta_error(
     user_action: str,
     metadata: Optional[Dict[str, Any]] = None,
 ) -> Path:
-    """
-    Log errors without showing raw stack traces to demo users.
-    """
-
     return write_jsonl(
         filename="beta_errors.jsonl",
         payload={
@@ -83,13 +62,7 @@ def log_beta_error(
 
 
 def safe_error_message(error: Exception) -> str:
-    """
-    User-facing beta error message.
-
-    The real traceback goes to logs/beta_errors.jsonl.
-    """
-
     return (
         "Something went wrong during the beta demo. "
-        "The error was logged so it can be reviewed later."
+        "The error was logged for review, but private system paths are hidden."
     )

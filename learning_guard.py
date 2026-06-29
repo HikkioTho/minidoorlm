@@ -219,6 +219,5 @@ def should_require_safety_note(topic: str) -> bool:
     return any(term in normalized for term in CONTROLLED_TERMS)
 
 
-# Backward-compatible alias in case older files import this name.
 def requires_safety_note(topic: str) -> bool:
     return should_require_safety_note(topic)

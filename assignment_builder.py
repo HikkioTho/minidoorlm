@@ -89,8 +89,8 @@ def build_virtual_lesson(
 
     if source_summaries:
         source_line = (
-            " Use the local study sources as grounding. "
-            f"Key source idea: {source_summaries[0]}"
+            " Use the retrieved local study sources as grounding. "
+            f"One relevant source idea is: {source_summaries[0]}"
         )
 
     if difficulty == "supportive":
@@ -114,10 +114,14 @@ def build_virtual_lesson(
     )
 
 
-def build_resources(topic: str, stage: str, source_chunks: Optional[List[str]] = None) -> List[str]:
+def build_resources(
+    topic: str,
+    stage: str,
+    source_chunks: Optional[List[str]] = None,
+) -> List[str]:
     resources = [
-        f"Find one beginner-friendly article or documentation page about {topic}.",
-        f"Find one short video or visual explanation about {topic}.",
+        f"Find one beginner-friendly article, documentation page, or textbook section about {topic}.",
+        f"Find one short visual explanation about {topic}.",
         f"Write down one question you still have about {topic}.",
         f"At the {stage} of the lesson, compare what you know now against your first question.",
     ]
@@ -181,7 +185,7 @@ def build_active_recall(topic: str, difficulty: str) -> List[str]:
 
     if difficulty in {"challenge", "advanced", "advanced_challenge"}:
         questions.append(
-            f"How would you teach {topic} to someone who thinks they already understands it?"
+            f"How would you teach {topic} to someone who thinks they already understand it?"
         )
 
     return questions

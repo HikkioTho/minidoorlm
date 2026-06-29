@@ -4,11 +4,9 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import List
 
+from beta_config import get_beta_config, safe_display_path
 from rag_chunker import TextChunk, chunk_text
 
-
-DEFAULT_SOURCE_DIR = Path("data/sources")
-DEFAULT_OUTPUT_FILE = Path("data/knowledge/knowledge_chunks.json")
 
 SUPPORTED_EXTENSIONS = {
     ".txt",
@@ -17,21 +15,23 @@ SUPPORTED_EXTENSIONS = {
 
 
 def parse_args():
+    config = get_beta_config()
+
     parser = argparse.ArgumentParser(
-        description="Ingest local OpenDoor source files into simple RAG chunks."
+        description="Ingest approved local OpenDoor public source files into simple RAG chunks."
     )
 
     parser.add_argument(
         "--source-dir",
         type=Path,
-        default=DEFAULT_SOURCE_DIR,
-        help="Folder containing .txt or .md source files.",
+        default=config.public_source_dir,
+        help="Approved folder containing .txt or .md source files.",
     )
 
     parser.add_argument(
         "--out",
         type=Path,
-        default=DEFAULT_OUTPUT_FILE,
+        default=config.knowledge_file,
         help="Output JSON file for knowledge chunks.",
     )
 
@@ -52,9 +52,19 @@ def parse_args():
     return parser.parse_args()
 
 
+def assert_inside_project(path: Path) -> None:
+    config = get_beta_config()
+
+    try:
+        path.resolve().relative_to(config.project_root.resolve())
+    except ValueError:
+        raise ValueError(
+            "Refusing to read or write outside the OpenDoor project folder."
+        )
+
+
 def read_source_file(path: Path) -> str:
     encodings = ["utf-8", "utf-8-sig", "cp1252"]
-
     last_error = None
 
     for encoding in encodings:
@@ -63,10 +73,12 @@ def read_source_file(path: Path) -> str:
         except UnicodeDecodeError as error:
             last_error = error
 
-    raise ValueError(f"Could not read {path}. Last error: {last_error}")
+    raise ValueError(f"Could not read source file. Last error: {last_error}")
 
 
 def collect_source_files(source_dir: Path) -> List[Path]:
+    assert_inside_project(source_dir)
+
     if not source_dir.exists():
         source_dir.mkdir(parents=True, exist_ok=True)
         return []
@@ -85,6 +97,8 @@ def build_chunks(source_dir: Path, max_chars: int, overlap_chars: int) -> List[T
     all_chunks: List[TextChunk] = []
 
     for source_file in source_files:
+        assert_inside_project(source_file)
+
         text = read_source_file(source_file)
         relative_name = str(source_file.relative_to(source_dir)).replace("\\", "/")
 
@@ -103,6 +117,9 @@ def build_chunks(source_dir: Path, max_chars: int, overlap_chars: int) -> List[T
 def main() -> int:
     args = parse_args()
 
+    assert_inside_project(args.source_dir)
+    assert_inside_project(args.out)
+
     chunks = build_chunks(
         source_dir=args.source_dir,
         max_chars=args.max_chars,
@@ -113,6 +130,7 @@ def main() -> int:
 
     payload = {
         "chunk_count": len(chunks),
+        "source_dir": safe_display_path(args.source_dir),
         "chunks": [asdict(chunk) for chunk in chunks],
     }
 
@@ -121,14 +139,14 @@ def main() -> int:
         encoding="utf-8",
     )
 
-    print(f"Source directory: {args.source_dir}")
+    print(f"Source directory: {safe_display_path(args.source_dir)}")
     print(f"Created chunks: {len(chunks)}")
-    print(f"Saved to: {args.out}")
+    print(f"Saved to: {safe_display_path(args.out)}")
 
     if len(chunks) == 0:
         print("")
         print("No source files found.")
-        print("Add .txt or .md files to data/sources/ and run this again.")
+        print("Add .txt or .md files to data/sources/public/ and run this again.")
 
     return 0
 
