@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import List
 
+from beta_config import get_beta_config
+
 
 BLOCKED_TERMS = [
     "make a bomb",
@@ -78,15 +80,16 @@ def find_matches(text: str, terms: List[str]) -> List[str]:
 
 
 def check_text_safety(text: str) -> LearningGuardDecision:
+    config = get_beta_config()
     normalized = normalize_text(text)
 
-    if len(normalized) > 5000:
+    if len(normalized) > config.max_submission_chars:
         return LearningGuardDecision(
             allowed=False,
             risk_level="red",
             reason="Input is too long for beta limits.",
             restrictions=[
-                "Keep input under 5000 characters during beta testing.",
+                f"Keep input under {config.max_submission_chars} characters during beta testing.",
             ],
         )
 
@@ -159,6 +162,8 @@ def check_profile_fields(
     weak_topics: str,
     strong_topics: str,
 ) -> LearningGuardDecision:
+    config = get_beta_config()
+
     if not name.strip():
         return LearningGuardDecision(
             allowed=False,
@@ -185,13 +190,13 @@ def check_profile_fields(
     }
 
     for field_name, field_value in fields.items():
-        if len(str(field_value or "")) > 1000:
+        if len(str(field_value or "")) > config.max_profile_field_chars:
             return LearningGuardDecision(
                 allowed=False,
                 risk_level="red",
                 reason=f"Profile field is too long: {field_name}",
                 restrictions=[
-                    "Keep each profile field under 1000 characters during beta testing.",
+                    f"Keep each profile field under {config.max_profile_field_chars} characters during beta testing.",
                 ],
             )
 
@@ -200,13 +205,15 @@ def check_profile_fields(
 
 
 def check_topic_request(topic: str, profile_goals: str) -> LearningGuardDecision:
-    if len(str(topic or "")) > 300:
+    config = get_beta_config()
+
+    if len(str(topic or "")) > config.max_topic_chars:
         return LearningGuardDecision(
             allowed=False,
             risk_level="red",
             reason="Topic is too long for beta limits.",
             restrictions=[
-                "Keep topic under 300 characters during beta testing.",
+                f"Keep topic under {config.max_topic_chars} characters during beta testing.",
             ],
         )
 

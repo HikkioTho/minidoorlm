@@ -22,6 +22,10 @@ class BetaConfig:
     show_debug_errors: bool
     allow_profile_saving: bool
     allow_assignment_exports: bool
+    max_topic_chars: int
+    max_profile_field_chars: int
+    max_submission_chars: int
+    min_submission_words: int
 
 
 def env_bool(name: str, default: bool = False) -> bool:
@@ -33,19 +37,25 @@ def env_bool(name: str, default: bool = False) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
-def project_path(relative_path: str) -> Path:
-    """
-    Keep beta storage inside the project.
+def env_int(name: str, default: int) -> int:
+    value = os.getenv(name)
 
-    This prevents the beta from being configured to scan or write directly
-    across the user's PC.
-    """
+    if value is None:
+        return default
+
+    try:
+        return int(value)
+    except ValueError:
+        return default
+
+
+def project_path(relative_path: str) -> Path:
     clean = relative_path.strip().replace("\\", "/").lstrip("/")
     return PROJECT_ROOT / clean
 
 
 def get_beta_config() -> BetaConfig:
-    environment = os.getenv("OPENDOOR_ENV", "local_beta").strip()
+    environment = os.getenv("OPENDOOR_ENV", "public_beta").strip()
 
     runtime_dir = project_path(os.getenv("OPENDOOR_RUNTIME_DIR", "runtime"))
     data_dir = project_path(os.getenv("OPENDOOR_DATA_DIR", "data"))
@@ -73,13 +83,14 @@ def get_beta_config() -> BetaConfig:
         show_debug_errors=env_bool("OPENDOOR_SHOW_DEBUG_ERRORS", default=False),
         allow_profile_saving=env_bool("OPENDOOR_ALLOW_PROFILE_SAVING", default=True),
         allow_assignment_exports=env_bool("OPENDOOR_ALLOW_ASSIGNMENT_EXPORTS", default=False),
+        max_topic_chars=env_int("OPENDOOR_MAX_TOPIC_CHARS", 300),
+        max_profile_field_chars=env_int("OPENDOOR_MAX_PROFILE_FIELD_CHARS", 1000),
+        max_submission_chars=env_int("OPENDOOR_MAX_SUBMISSION_CHARS", 5000),
+        min_submission_words=env_int("OPENDOOR_MIN_SUBMISSION_WORDS", 25),
     )
 
 
 def safe_display_path(path: Path) -> str:
-    """
-    Show project-relative paths instead of full Windows paths.
-    """
     try:
         return str(path.resolve().relative_to(PROJECT_ROOT.resolve())).replace("\\", "/")
     except ValueError:

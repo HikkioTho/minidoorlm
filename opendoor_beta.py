@@ -1,7 +1,7 @@
 import streamlit as st
 
 from assignment_builder import build_assignment
-from beta_config import get_beta_config
+from beta_config import get_beta_config, safe_display_path
 from beta_health_check import run_beta_health_check
 from beta_logger import log_beta_error, log_beta_event, safe_error_message
 from content_quality_guard import evaluate_content_quality, format_content_quality_report
@@ -58,20 +58,34 @@ def show_health_check():
             st.info("No warnings found.")
 
 
-def show_disclosure():
+def show_beta_disclosure():
     st.info(
-        "OpenDoor Beta is an AI-assisted learning tool. "
-        "It can help create lessons, homework, and review plans, but it is not a human teacher, "
-        "doctor, lawyer, therapist, or emergency service. Do not enter passwords, secrets, "
-        "private personal records, or sensitive data."
+        "OpenDoor Beta creates personalized study lessons, homework, active recall, "
+        "and review plans. This is a demo build. It is not a human teacher, doctor, "
+        "lawyer, therapist, emergency service, or professional advisor."
     )
+
+    with st.expander("Beta safety and privacy notes", expanded=False):
+        st.markdown(
+            """
+- Do not enter passwords, secrets, private personal records, API keys, or sensitive documents.
+- Public demo profiles are stored only for beta testing and may be cleared.
+- The app does not browse your computer.
+- Local RAG only reads approved source files from the project knowledge folder.
+- You can generate as many lessons as you want during the beta.
+- Very large inputs are blocked to prevent crashes and abuse.
+            """
+        )
 
 
 def show_retrieved_sources(chunks):
     st.markdown("### Retrieved Study Sources")
 
     if not chunks:
-        st.info("No local source chunks were retrieved. Add .txt or .md files to data/sources/ and run ingest_sources.py.")
+        st.info(
+            "No local source chunks were retrieved. "
+            "Add .txt or .md files to data/sources/public/ and run ingest_sources.py."
+        )
         return
 
     for index, chunk in enumerate(chunks, start=1):
@@ -271,7 +285,7 @@ def show_profile_sidebar():
 
             if CONFIG.allow_profile_saving:
                 path = save_profile(profile)
-                st.sidebar.success(f"Saved profile: {path}")
+                st.sidebar.success(f"Saved profile: {safe_display_path(path)}")
             else:
                 path = None
                 st.sidebar.info("Profile saving is disabled in this environment.")
@@ -284,7 +298,7 @@ def show_profile_sidebar():
                 metadata={
                     "name": profile.name,
                     "level": profile.level,
-                    "saved_path": str(path) if path else None,
+                    "saved_path": safe_display_path(path) if path else None,
                 },
             )
 
@@ -339,11 +353,11 @@ def show_submission_checker(assignment):
                 st.error("Paste a response first.")
                 return
 
-            if len(submission) > 5000:
-                st.error("Submission is too long for the beta checker.")
+            if len(submission) > CONFIG.max_submission_chars:
+                st.error(f"Submission is too long. Limit: {CONFIG.max_submission_chars} characters.")
                 return
 
-            if len(submission.split()) < 25:
+            if len(submission.split()) < CONFIG.min_submission_words:
                 st.warning("Response is short. Ask for more explanation, examples, or corrections.")
             else:
                 st.success("Response has enough length for a beta review.")
@@ -382,7 +396,7 @@ def main():
     st.title(CONFIG.app_name)
     st.caption(f"Environment: {CONFIG.environment}")
 
-    show_disclosure()
+    show_beta_disclosure()
     show_health_check()
     show_profile_sidebar()
 
@@ -405,7 +419,7 @@ def main():
     use_rag = st.checkbox(
         "Use local RAG knowledge base",
         value=True,
-        help="Retrieves local .txt/.md source chunks from data/knowledge/knowledge_chunks.json.",
+        help="Retrieves local .txt/.md source chunks from the approved project knowledge base.",
     )
 
     if st.button("Generate Virtual Lesson and Assignment"):
@@ -449,6 +463,7 @@ def main():
                 retrieved_chunks = retrieve_relevant_chunks(
                     query=topic,
                     limit=4,
+                    knowledge_file=CONFIG.knowledge_file,
                 )
 
             assignment = build_assignment(
