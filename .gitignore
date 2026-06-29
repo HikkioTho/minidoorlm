@@ -1,4 +1,6 @@
 .venv/
+__pycache__/
+*.pyc
 *.pt
 training_log.csv
 training_tokens_log.csv
@@ -9,5 +11,7 @@ logs/
 uploads/
 exports/
 output/
+data/profiles/
 data/training_candidates/
 data/quarantine/
+data/sources/private/
