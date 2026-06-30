@@ -18,6 +18,7 @@ from homework_grader import format_homework_review, review_homework_response
 from intent_normalizer import normalize_intent
 from learning_guard import check_profile_fields, check_text_safety, check_topic_request
 from minidoor_persona import format_tutor_feedback
+from quick_answer_engine import build_quick_answer, format_quick_answer
 from rag_retriever import retrieve_relevant_chunks
 from student_profile import (
     build_profile,
@@ -87,32 +88,9 @@ def inject_clean_css():
             background: rgba(255,255,255,0.035);
         }
 
-        .od-card {
-            border: 1px solid rgba(255,255,255,0.12);
-            border-radius: 16px;
-            padding: 1.05rem 1.15rem;
-            margin: 0.75rem 0;
-            background: rgba(255,255,255,0.03);
-        }
-
         .od-muted {
             color: rgba(255,255,255,0.68);
             font-size: 0.92rem;
-        }
-
-        .od-pill {
-            display: inline-block;
-            border: 1px solid rgba(255,255,255,0.16);
-            border-radius: 999px;
-            padding: 0.25rem 0.7rem;
-            margin: 0.2rem 0.25rem 0.2rem 0;
-            font-size: 0.88rem;
-        }
-
-        .od-big-label {
-            font-size: 1.05rem;
-            font-weight: 700;
-            margin-bottom: 0.25rem;
         }
 
         @media (max-width: 768px) {
@@ -164,20 +142,22 @@ def show_sidebar():
 
     st.sidebar.divider()
 
+    page_options = [
+        "Home",
+        "Chat",
+        "Profile",
+        "Study + Homework",
+    ]
+
+    current_page = st.session_state.get("active_page", "Home")
+
+    if current_page not in page_options:
+        current_page = "Home"
+
     page = st.sidebar.radio(
         "Navigation",
-        [
-            "Home",
-            "Chat",
-            "Profile",
-            "Study + Homework",
-        ],
-        index=[
-            "Home",
-            "Chat",
-            "Profile",
-            "Study + Homework",
-        ].index(st.session_state.get("active_page", "Home")),
+        page_options,
+        index=page_options.index(current_page),
     )
 
     st.session_state["active_page"] = page
@@ -195,41 +175,26 @@ def run_quick_answer(message: str) -> str:
         restrictions = "\n".join(f"- {item}" for item in decision.restrictions)
         return f"I cannot help with that request.\n\nReason: {decision.reason}\n\n{restrictions}"
 
-    intent = normalize_intent(message)
+    quick_answer = build_quick_answer(message)
     profile = get_active_profile()
 
-    profile_line = ""
-
-    if profile:
-        profile_line = (
-            f"\n\nProfile used: {profile.name}, level {profile.level}, goal: {profile.goals or 'not set'}."
-        )
-
-    if intent.domain == "trades_plumbing":
-        return (
-            f"I read this as: {intent.clean_topic}.\n\n"
-            f"First door: {intent.first_door}.\n\n"
-            "Start here:\n"
-            "1. Learn the system map: supply, drain, vent, fixtures, traps, and shutoff valves.\n"
-            "2. Learn tool names before using tools.\n"
-            "3. Learn safety and local code boundaries.\n"
-            "4. Do observation first: map one sink without changing anything.\n"
-            "5. If this is career-focused, look into apprenticeship routes and licensing rules in your area.\n\n"
-            f"Next best action: {intent.next_best_action}"
-            f"{profile_line}"
-        )
-
-    return (
-        f"I read this as: {intent.clean_topic}.\n\n"
-        f"First door: {intent.first_door}.\n\n"
-        f"Quick answer: {intent.learning_goal}\n\n"
-        f"Next best action: {intent.next_best_action}"
-        f"{profile_line}"
-    )
+    return format_quick_answer(quick_answer, profile=profile)
 
 
 def build_lesson_from_topic(topic: str, use_rag: bool = True):
     profile = get_active_profile()
+    intent = normalize_intent(topic)
+
+    if intent.needs_clarification:
+        st.warning(intent.clarification_question)
+
+        if intent.suggested_topics:
+            st.write("Try one of these instead:")
+
+            for suggestion in intent.suggested_topics:
+                st.markdown(f"- {suggestion}")
+
+        return None, []
 
     if not profile:
         st.warning("Create a profile for full adaptive lesson generation. Quick answers still work without one.")
@@ -315,6 +280,7 @@ def show_home_action_center():
             "Build lesson",
             "Review homework",
         ],
+        index=0,
         horizontal=True,
     )
 
@@ -394,6 +360,11 @@ def show_home_action_center():
                 return
 
             intent = normalize_intent(user_input)
+
+            if intent.needs_clarification:
+                st.warning(intent.clarification_question)
+                return
+
             review = review_homework_response(
                 topic=intent.clean_topic,
                 response=review_text,
@@ -453,7 +424,10 @@ def show_home_page():
     if not profile:
         with st.container(border=True):
             st.markdown("### No profile yet")
-            st.write("Quick answers work now. Create a profile when you want OpenDoor to adapt to your goals, level, and weak spots.")
+            st.write(
+                "Quick answers work now. Create a profile when you want OpenDoor to adapt "
+                "to your goals, level, and weak spots."
+            )
             st.write("Go to Profile when ready.")
         return
 
@@ -528,7 +502,7 @@ def show_chat_page():
 
     prompt = st.text_input(
         "Quick question",
-        placeholder="Example: what is a shutoff valve?",
+        placeholder="Example: what is the first law of thermodynamics?",
     )
 
     if st.button("Ask", type="primary"):
