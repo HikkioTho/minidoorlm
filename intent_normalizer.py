@@ -5,6 +5,12 @@ QUESTION_STARTERS = [
     "how would i",
     "how do i",
     "how can i",
+    "where do i start with",
+    "where should i start with",
+    "how do i start with",
+    "how do i start",
+    "how do i begin",
+    "how can i begin",
     "what is",
     "what are",
     "why does",
@@ -14,6 +20,8 @@ QUESTION_STARTERS = [
     "explain",
     "i want to learn",
     "help me learn",
+    "start with",
+    "begin with",
 ]
 
 
@@ -26,6 +34,8 @@ class NormalizedIntent:
     output_mode: str
     domain: str
     user_facing_summary: str
+    first_door: str
+    next_best_action: str
 
 
 def clean_sentence(value: str) -> str:
@@ -45,6 +55,12 @@ def remove_question_starter(text: str) -> str:
 
 def infer_domain(raw_input: str) -> str:
     lowered = raw_input.lower()
+
+    if any(word in lowered for word in ["plumbing", "plumber", "pipe", "pipes", "water heater", "drain", "fixture"]):
+        return "trades_plumbing"
+
+    if any(word in lowered for word in ["career", "job", "apprentice", "apprenticeship", "certification", "trade school"]):
+        return "career_path"
 
     if any(word in lowered for word in ["tractor", "engine", "fuel", "diesel", "biodiesel", "mechanic"]):
         return "mechanical_fuel"
@@ -70,6 +86,11 @@ def infer_domain(raw_input: str) -> str:
 def infer_clean_topic(raw_input: str) -> str:
     raw = clean_sentence(raw_input)
     lowered = raw.lower()
+
+    if any(word in lowered for word in ["plumbing", "plumber"]):
+        if any(word in lowered for word in ["career", "job", "begin", "start", "apprentice", "apprenticeship"]):
+            return "Starting a plumbing career"
+        return "Plumbing fundamentals"
 
     if "tractor" in lowered and any(word in lowered for word in ["fuel", "natural", "biodiesel", "diesel"]):
         return "Alternative tractor fuel options"
@@ -100,6 +121,13 @@ def infer_clean_topic(raw_input: str) -> str:
 def infer_safety_frame(raw_input: str, clean_topic: str, domain: str) -> str:
     lowered = f"{raw_input} {clean_topic}".lower()
 
+    if domain == "trades_plumbing":
+        return (
+            "Use educational and safety-aware framing. Explain concepts, tools, career steps, "
+            "and basic troubleshooting at a high level. For real plumbing work, mention local code, "
+            "permits, licensing rules, and qualified supervision."
+        )
+
     if domain == "mechanical_fuel":
         return (
             "Use a high-level, safety-focused explanation. Discuss engine type, fuel compatibility, "
@@ -122,11 +150,28 @@ def infer_safety_frame(raw_input: str, clean_topic: str, domain: str) -> str:
     return "Use normal educational framing."
 
 
-def infer_learning_goal(raw_input: str, clean_topic: str) -> str:
+def infer_learning_goal(raw_input: str, clean_topic: str, domain: str) -> str:
     lowered = raw_input.lower()
 
-    if lowered.startswith(("how", "can")):
-        return f"Understand the safe practical options, decision points, and limits around {clean_topic}."
+    if domain == "trades_plumbing":
+        if any(word in lowered for word in ["career", "job", "begin", "start", "apprentice", "apprenticeship"]):
+            return (
+                "Understand the first safe steps toward plumbing: basic concepts, tools, code awareness, "
+                "apprenticeship options, and beginner practice areas."
+            )
+
+        return (
+            "Build a practical beginner understanding of plumbing systems, basic components, tools, "
+            "safety, and when to call a licensed professional."
+        )
+
+    if domain == "mechanical_fuel":
+        return (
+            f"Understand the safe practical options, decision points, and limits around {clean_topic}."
+        )
+
+    if lowered.startswith(("how", "can", "where")):
+        return f"Understand the practical starting path, decision points, and safe next steps around {clean_topic}."
 
     if lowered.startswith(("what", "why")):
         return f"Understand the meaning, purpose, examples, and common mistakes around {clean_topic}."
@@ -146,16 +191,56 @@ def infer_output_mode(raw_input: str) -> str:
     return "lesson"
 
 
+def infer_first_door(clean_topic: str, domain: str) -> str:
+    if domain == "trades_plumbing":
+        return "Plumbing basics: water supply, drainage, tools, safety, and code awareness"
+
+    if domain == "mechanical_fuel":
+        return "Engine type and manufacturer fuel requirements"
+
+    if domain == "electronics":
+        return "Core vocabulary and one safe hands-on example"
+
+    if domain == "programming":
+        return "Small working example plus explanation"
+
+    if domain == "cybersecurity":
+        return "Safe lab framing and defensive vocabulary"
+
+    return f"Basic understanding of {clean_topic}"
+
+
+def infer_next_best_action(clean_topic: str, domain: str) -> str:
+    if domain == "trades_plumbing":
+        return (
+            "Start with the plumbing system map: supply, drain, vent, fixtures, shutoff valves, "
+            "basic tools, and local licensing/code awareness. Then pick one tiny practice topic."
+        )
+
+    if domain == "mechanical_fuel":
+        return "Identify the engine type and manufacturer fuel requirements before learning deeper options."
+
+    if domain == "electronics":
+        return "Do one small explanation task, then one hands-on practice task."
+
+    if domain == "programming":
+        return "Write one tiny example, run it, then explain each line."
+
+    return f"Learn the core idea of {clean_topic}, answer one check question, then do one small practice task."
+
+
 def normalize_intent(raw_input: str) -> NormalizedIntent:
     raw = clean_sentence(raw_input)
     domain = infer_domain(raw)
     clean_topic = infer_clean_topic(raw)
-    learning_goal = infer_learning_goal(raw, clean_topic)
+    learning_goal = infer_learning_goal(raw, clean_topic, domain)
     safety_frame = infer_safety_frame(raw, clean_topic, domain)
     output_mode = infer_output_mode(raw)
+    first_door = infer_first_door(clean_topic, domain)
+    next_best_action = infer_next_best_action(clean_topic, domain)
 
     user_facing_summary = (
-        f"I read this as: learn about {clean_topic}. "
+        f"I read this as: {clean_topic}. "
         f"Goal: {learning_goal}"
     )
 
@@ -167,4 +252,6 @@ def normalize_intent(raw_input: str) -> NormalizedIntent:
         output_mode=output_mode,
         domain=domain,
         user_facing_summary=user_facing_summary,
+        first_door=first_door,
+        next_best_action=next_best_action,
     )

@@ -4,9 +4,20 @@ from assignment_builder import build_assignment
 from beta_config import get_beta_config
 from beta_health_check import run_beta_health_check
 from beta_logger import log_beta_error, log_beta_event, safe_error_message
+from engagement_engine import (
+    build_celebration_moment,
+    build_mastery_map_preview,
+    build_mood_energy_check,
+    build_onboarding_card,
+    build_path_direction,
+    build_session_summary,
+    build_transparency_card,
+    detect_basic_frustration,
+)
 from homework_grader import format_homework_review, review_homework_response
 from intent_normalizer import normalize_intent
 from learning_guard import check_profile_fields, check_text_safety, check_topic_request
+from minidoor_persona import format_tutor_feedback
 from rag_retriever import retrieve_relevant_chunks
 from student_profile import (
     build_profile,
@@ -33,6 +44,9 @@ def init_state():
         "retrieved_chunks": [],
         "last_topic": "",
         "profile": None,
+        "onboarding_card": None,
+        "celebration": None,
+        "session_energy": "Normal lesson",
     }
 
     for key, value in defaults.items():
@@ -44,13 +58,53 @@ def get_active_profile():
     return st.session_state.get("profile")
 
 
+def inject_clean_css():
+    st.markdown(
+        """
+        <style>
+        .block-container {
+            padding-top: 2.5rem;
+            padding-bottom: 4rem;
+            max-width: 1180px;
+        }
+        div[data-testid="stAlert"] {
+            border-radius: 14px;
+        }
+        section[data-testid="stSidebar"] {
+            border-right: 1px solid rgba(255,255,255,0.08);
+        }
+        .od-card {
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 16px;
+            padding: 1.1rem 1.2rem;
+            margin: 0.75rem 0;
+            background: rgba(255,255,255,0.03);
+        }
+        .od-small {
+            color: rgba(255,255,255,0.68);
+            font-size: 0.92rem;
+        }
+        .od-pill {
+            display: inline-block;
+            border: 1px solid rgba(255,255,255,0.16);
+            border-radius: 999px;
+            padding: 0.25rem 0.7rem;
+            margin: 0.2rem 0.25rem 0.2rem 0;
+            font-size: 0.88rem;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def show_app_header():
     st.title("OpenDoor")
     st.caption("Open the door. Find your house.")
 
     st.info(
-        "OpenDoor is an adaptive learning beta. Start with quick chat, build a learner profile, "
-        "or generate a study plan with homework."
+        "OpenDoor is an adaptive learning beta. Ask a quick question, build your learner profile, "
+        "or turn a topic into a study plan."
     )
 
 
@@ -73,7 +127,7 @@ def show_health_check():
             st.warning(warning)
 
 
-def show_new_user_sidebar():
+def show_sidebar():
     st.sidebar.header("Start Here")
 
     profile = get_active_profile()
@@ -82,21 +136,114 @@ def show_new_user_sidebar():
         st.sidebar.success(f"Active profile: {profile.name}")
     else:
         st.sidebar.warning("No active profile yet.")
-        st.sidebar.caption("Go to Profile and create one for personalized lessons.")
+        st.sidebar.caption("Start with Profile for personalized lessons.")
+
+    st.sidebar.divider()
+
+    page = st.sidebar.radio(
+        "Navigation",
+        [
+            "Home",
+            "Chat",
+            "Profile",
+            "Study + Homework",
+        ],
+    )
 
     st.sidebar.divider()
     st.sidebar.caption("Public beta. Debug details are hidden from normal users.")
 
+    return page
 
-def show_list(title: str, items):
-    st.markdown(f"### {title}")
 
-    if not items:
-        st.info("Nothing here yet.")
+def show_home_page():
+    st.header("Home")
+    st.caption("This is where OpenDoor shows the learner model instead of hiding it.")
+
+    profile = get_active_profile()
+    assignment = st.session_state.get("assignment")
+    retrieved_chunks = st.session_state.get("retrieved_chunks", [])
+
+    if not profile:
+        st.markdown(
+            """
+            <div class="od-card">
+                <h3>New here?</h3>
+                <p>Create a learner profile first. OpenDoor needs your goal, level, weak spots, and example style before it can adapt.</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.info("Go to Profile, answer the starter questions, then come back here.")
         return
 
-    for item in items:
-        st.markdown(f"- {item}")
+    summary = build_session_summary(profile, assignment)
+
+    st.subheader(summary.greeting)
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        with st.container(border=True):
+            st.markdown("### Since last session")
+            for item in summary.since_last_session:
+                st.markdown(f"- {item}")
+
+    with col2:
+        with st.container(border=True):
+            st.markdown("### Next best action")
+            st.write(summary.next_best_action)
+
+            if summary.door_unlocked:
+                st.success(summary.door_unlocked)
+
+    with st.container(border=True):
+        st.markdown("### Forgetting and repair alerts")
+        for item in summary.forgetting_alerts:
+            st.markdown(f"- {item}")
+
+    st.divider()
+
+    st.subheader("Mastery map preview")
+    mastery_nodes = build_mastery_map_preview(profile)
+
+    for node in mastery_nodes:
+        with st.container(border=True):
+            st.markdown(f"**{node.name}**")
+            st.caption(f"Status: {node.status}")
+            st.progress(min(max(node.mastery, 0.0), 1.0))
+            st.caption(f"Forgetting risk: {node.forgetting_risk:.0%}")
+            st.write(node.note)
+
+    st.divider()
+
+    mood = build_mood_energy_check()
+    st.subheader(mood.prompt)
+    selected_energy = st.radio(
+        "Session mode",
+        mood.options,
+        horizontal=True,
+    )
+    st.caption(mood.use_for)
+    st.session_state["session_energy"] = selected_energy
+
+    if assignment:
+        st.divider()
+        st.subheader("Why this was assigned")
+        transparency = build_transparency_card(profile, assignment, retrieved_chunks)
+
+        with st.container(border=True):
+            st.write(f"**Assigned:** {transparency.assigned}")
+            st.write(transparency.why)
+            st.markdown("**Learner model used:**")
+            for item in transparency.learner_model_used:
+                st.markdown(f"- {item}")
+            st.caption(transparency.source_note)
+            st.caption(transparency.user_can_override)
+
+        st.subheader("Where this could go")
+        for path in build_path_direction(assignment.topic):
+            st.markdown(f"- {path}")
 
 
 def quick_chat_answer(message: str) -> str:
@@ -113,23 +260,28 @@ def quick_chat_answer(message: str) -> str:
 
     if profile:
         profile_line = (
-            f"\n\nI am using your profile lightly here: level {profile.level}, "
-            f"goals: {profile.goals or 'not set'}."
+            f"\n\nProfile used: {profile.name}, level {profile.level}, goal: {profile.goals or 'not set'}."
         )
 
-    if intent.output_mode == "quick_chat":
+    if intent.domain == "trades_plumbing":
         return (
             f"I read this as: {intent.clean_topic}.\n\n"
-            f"Quick answer: {intent.learning_goal}\n\n"
-            f"Boundary: {intent.safety_frame}"
+            f"First door: {intent.first_door}.\n\n"
+            "Start here:\n"
+            "1. Learn the system map: supply, drain, vent, fixtures, traps, and shutoff valves.\n"
+            "2. Learn tool names before using tools.\n"
+            "3. Learn safety and local code boundaries.\n"
+            "4. Do observation first: map one sink without changing anything.\n"
+            "5. If this is career-focused, look into apprenticeship routes and licensing rules in your area.\n\n"
+            f"Next best action: {intent.next_best_action}"
             f"{profile_line}"
         )
 
     return (
         f"I read this as: {intent.clean_topic}.\n\n"
-        f"Goal: {intent.learning_goal}\n\n"
-        "Small answer: start with the core idea, then ask what decision or example matters most. "
-        "If you want a full lesson, use Study + Homework."
+        f"First door: {intent.first_door}.\n\n"
+        f"Quick answer: {intent.learning_goal}\n\n"
+        f"Next best action: {intent.next_best_action}"
         f"{profile_line}"
     )
 
@@ -177,42 +329,12 @@ def show_chat_page():
 
 def show_profile_page():
     st.header("Profile")
-    st.caption("Create or load the learner profile. This is what lets OpenDoor adapt.")
+    st.caption("Create the learner model. This is what lets OpenDoor adapt.")
 
     existing_profiles = list_profiles()
 
-    load_col, create_col = st.columns([1, 2])
-
-    with load_col:
-        st.subheader("Load")
-
-        if existing_profiles:
-            selected_name = st.selectbox("Saved profiles", existing_profiles)
-
-            if st.button("Load Profile"):
-                try:
-                    profile = load_profile(selected_name)
-                    st.session_state["profile"] = profile
-                    st.success(f"Loaded {profile.name}")
-
-                    log_beta_event(
-                        event_type="profile_loaded",
-                        message="Profile loaded.",
-                        metadata={"name": profile.name},
-                    )
-
-                except Exception as error:
-                    log_beta_error(
-                        error=error,
-                        user_action="load_profile",
-                        metadata={"selected_name": selected_name},
-                    )
-                    st.error(safe_error_message(error))
-        else:
-            st.info("No saved profiles yet.")
-
-    with create_col:
-        st.subheader("Create / Update")
+    with st.container(border=True):
+        st.subheader("Guided start")
 
         active_profile = get_active_profile()
 
@@ -230,7 +352,7 @@ def show_profile_page():
         goals = st.text_area(
             "Why are you here?",
             value=getattr(active_profile, "goals", ""),
-            placeholder="Example: I want to learn electronics and build small projects.",
+            placeholder="Example: I want to start a plumbing career, learn electronics, or pass Security+.",
         )
 
         analogy_preferences = st.text_area(
@@ -240,15 +362,15 @@ def show_profile_page():
         )
 
         weak_topics = st.text_area(
-            "Weak topics",
+            "What feels weak or confusing?",
             value=", ".join(getattr(active_profile, "weak_topics", [])),
-            placeholder="Example: algebra, circuits, Linux permissions",
+            placeholder="Example: algebra, tools, circuits, networking, code errors",
         )
 
         strong_topics = st.text_area(
-            "Strong topics",
+            "What do you already feel good at?",
             value=", ".join(getattr(active_profile, "strong_topics", [])),
-            placeholder="Example: Python basics, networking, hands-on work",
+            placeholder="Example: Python basics, hands-on work, troubleshooting",
         )
 
         current_streak = st.number_input(
@@ -276,10 +398,8 @@ def show_profile_page():
 
                 if not decision.allowed:
                     st.error(decision.reason)
-
                     for restriction in decision.restrictions:
                         st.warning(restriction)
-
                     return
 
                 profile = build_profile(
@@ -300,6 +420,18 @@ def show_profile_page():
                     st.info("Profile saving is disabled in this environment.")
 
                 st.session_state["profile"] = profile
+
+                seed_topic = profile.weak_topics[0] if profile.weak_topics else profile.goals
+
+                onboarding_card = build_onboarding_card(
+                    name=profile.name,
+                    learner_reason=profile.goals,
+                    starting_topic=seed_topic,
+                    level=profile.level,
+                    analogy_preferences=profile.analogy_preferences,
+                )
+
+                st.session_state["onboarding_card"] = onboarding_card
 
                 log_beta_event(
                     event_type="profile_saved",
@@ -322,22 +454,57 @@ def show_profile_page():
                 if CONFIG.show_debug_errors:
                     st.exception(error)
 
+    if existing_profiles:
+        with st.expander("Load existing profile", expanded=False):
+            selected_name = st.selectbox("Saved profiles", existing_profiles)
+
+            if st.button("Load Profile"):
+                try:
+                    profile = load_profile(selected_name)
+                    st.session_state["profile"] = profile
+                    st.success(f"Loaded {profile.name}")
+
+                    log_beta_event(
+                        event_type="profile_loaded",
+                        message="Profile loaded.",
+                        metadata={"name": profile.name},
+                    )
+
+                except Exception as error:
+                    log_beta_error(
+                        error=error,
+                        user_action="load_profile",
+                        metadata={"selected_name": selected_name},
+                    )
+                    st.error(safe_error_message(error))
+
     profile = get_active_profile()
 
     if profile:
         st.divider()
         st.subheader("Your starting point")
 
-        st.write(f"**Learner:** {profile.name}")
-        st.write(f"**Level:** {profile.level}")
-        st.write(f"**Goal:** {profile.goals or 'Not set yet'}")
-        st.write(f"**Examples that help:** {profile.analogy_preferences or 'Not set yet'}")
+        with st.container(border=True):
+            st.write(f"**Learner:** {profile.name}")
+            st.write(f"**Level:** {profile.level}")
+            st.write(f"**Goal:** {profile.goals or 'Not set yet'}")
+            st.write(f"**Examples that help:** {profile.analogy_preferences or 'Not set yet'}")
 
-        if profile.weak_topics:
-            st.write(f"**Things to repair:** {', '.join(profile.weak_topics)}")
+            if profile.weak_topics:
+                st.write(f"**Things to repair:** {', '.join(profile.weak_topics)}")
 
-        if profile.strong_topics:
-            st.write(f"**Strengths:** {', '.join(profile.strong_topics)}")
+            if profile.strong_topics:
+                st.write(f"**Strengths:** {', '.join(profile.strong_topics)}")
+
+        onboarding_card = st.session_state.get("onboarding_card")
+
+        if onboarding_card:
+            st.subheader("Your first door")
+
+            with st.container(border=True):
+                st.markdown(f"### {onboarding_card.first_door}")
+                st.write(onboarding_card.delight_moment)
+                st.write(onboarding_card.next_step)
 
 
 def show_source_note(assignment, retrieved_chunks):
@@ -359,6 +526,18 @@ def show_lesson_card(assignment, retrieved_chunks):
 
     st.subheader("What OpenDoor understood")
     st.write(assignment.summary_card)
+
+    celebration = st.session_state.get("celebration")
+
+    if celebration:
+        with st.container(border=True):
+            st.markdown(f"### {celebration.title}")
+            st.write(celebration.message)
+
+            if celebration.unlocked:
+                st.success(celebration.unlocked)
+
+            st.caption(celebration.next_hint)
 
     st.subheader("Why this matters")
     st.write(assignment.why_this_matters)
@@ -407,7 +586,7 @@ def show_lesson_card(assignment, retrieved_chunks):
 
 def show_study_page():
     st.header("Study + Homework")
-    st.caption("Generate lessons, learning questions, practice, and homework review.")
+    st.caption("Turn a topic into a lesson, learning questions, practice, and review.")
 
     profile = get_active_profile()
 
@@ -418,7 +597,7 @@ def show_study_page():
     topic = st.text_input(
         "What do you want to learn?",
         value=st.session_state.get("last_topic", ""),
-        placeholder="Example: soldering basics, CIDR notation, Python functions",
+        placeholder="Example: how do I start a plumbing career?",
     )
 
     use_rag = st.checkbox(
@@ -465,6 +644,13 @@ def show_study_page():
 
             st.session_state["assignment"] = assignment
             st.session_state["retrieved_chunks"] = retrieved_chunks
+
+            celebration = build_celebration_moment(
+                event_type="door_unlocked",
+                concept=assignment.topic,
+            )
+
+            st.session_state["celebration"] = celebration
 
             log_beta_event(
                 event_type="assignment_created",
@@ -556,7 +742,7 @@ def show_study_page():
     review_topic = st.text_input(
         "Homework topic",
         value=assignment_topic,
-        placeholder="Example: soldering basics",
+        placeholder="Example: plumbing fundamentals",
     )
 
     response = st.text_area(
@@ -591,6 +777,18 @@ def show_study_page():
 
             st.text(format_homework_review(review))
 
+            frustration_signal = detect_basic_frustration(response)
+
+            if frustration_signal:
+                st.warning(frustration_signal)
+                st.info(
+                    format_tutor_feedback(
+                        correct_piece="You submitted enough text for OpenDoor to inspect your reasoning.",
+                        weak_piece="The response shows signs that the current explanation may not be landing.",
+                        next_step="Try a shorter explanation style or ask OpenDoor to explain it another way.",
+                    )
+                )
+
             log_beta_event(
                 event_type="homework_reviewed",
                 message="Homework response reviewed.",
@@ -617,20 +815,15 @@ def show_study_page():
 
 def main():
     init_state()
+    inject_clean_css()
     show_app_header()
     show_health_check()
-    show_new_user_sidebar()
 
-    page = st.sidebar.radio(
-        "Navigation",
-        [
-            "Chat",
-            "Profile",
-            "Study + Homework",
-        ],
-    )
+    page = show_sidebar()
 
-    if page == "Chat":
+    if page == "Home":
+        show_home_page()
+    elif page == "Chat":
         show_chat_page()
     elif page == "Profile":
         show_profile_page()

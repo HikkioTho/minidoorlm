@@ -88,8 +88,10 @@ def build_summary_card(profile: StudentProfile, intent: NormalizedIntent, diffic
     return (
         f"OpenDoor reads your request as: {intent.clean_topic}.\n\n"
         f"Goal: {intent.learning_goal}\n\n"
+        f"First door: {intent.first_door}.\n\n"
+        f"Next best action: {intent.next_best_action}\n\n"
         f"Level route: {difficulty}.\n\n"
-        f"Profile use: This lesson is shaped around {profile.name}'s goal: {profile.goals}."
+        f"Profile used: {profile.name}, {profile.level}, goal: {profile.goals or 'not set'}."
     )
 
 
@@ -110,33 +112,50 @@ def build_virtual_lesson(
             f"\n\nSource-grounded note: One retrieved source idea says: {source_summaries[0]}"
         )
 
+    if intent.domain == "trades_plumbing":
+        return (
+            f"{topic} starts with understanding the system, not touching tools first. "
+            "A beginner should learn the map: water supply brings clean water in, drainage carries waste water out, "
+            "venting helps drains work correctly, fixtures are the visible endpoints, and shutoff valves control risk. "
+            "The first safe move is observation: identify parts, learn names, understand what each part does, "
+            "and know when code, permits, or a licensed plumber matter. "
+            f"Use {analogy} as the explanation style where helpful."
+            f"{source_line}"
+        )
+
     if difficulty == "supportive":
         return (
             f"Start with the safe basic idea of {topic}. "
-            f"The point is not to memorize a definition. The point is to understand the decision points, "
-            f"common mistakes, and what someone should check before acting. "
-            f"We will use {analogy} where helpful."
+            "The point is not to memorize a definition. The point is to understand the decision points, "
+            "common mistakes, and what someone should check before acting. "
+            f"Use {analogy} where helpful."
             f"{source_line}"
         )
 
     if difficulty in {"challenge", "advanced", "advanced_challenge"}:
         return (
             f"For {topic}, do not stop at the surface explanation. "
-            f"Connect the idea to {profile.goals}, identify the constraints, and explain where beginners get it wrong. "
+            f"Connect the idea to {profile.goals}, identify constraints, and explain where beginners get it wrong. "
             f"Use {analogy} if it helps make the concept easier to reason about."
             f"{source_line}"
         )
 
     return (
         f"{topic} is the clean topic OpenDoor extracted from your request. "
-        f"The lesson should focus on what it means, why it matters, what can go wrong, "
-        f"and what first step a learner should take. "
-        f"We will use {analogy} where helpful."
+        "The lesson should focus on what it means, why it matters, what can go wrong, "
+        "and what first step a learner should take. "
+        f"Use {analogy} where helpful."
         f"{source_line}"
     )
 
 
 def build_why_this_matters(intent: NormalizedIntent, profile: StudentProfile) -> str:
+    if intent.domain == "trades_plumbing":
+        return (
+            "This matters because plumbing mistakes can cause leaks, water damage, unsafe conditions, "
+            "or code problems. Learning the system map first makes the hands-on work safer later."
+        )
+
     if intent.domain == "mechanical_fuel":
         return (
             "This matters because fuel and engine compatibility are safety-sensitive. "
@@ -150,6 +169,13 @@ def build_why_this_matters(intent: NormalizedIntent, profile: StudentProfile) ->
 
 
 def build_prerequisite_check(intent: NormalizedIntent) -> List[str]:
+    if intent.domain == "trades_plumbing":
+        return [
+            "Can you identify supply, drain, vent, fixture, trap, and shutoff valve?",
+            "Do you know where the main water shutoff is before any real work?",
+            "Do you understand that real plumbing work can involve local code, permits, and licensing?",
+        ]
+
     if intent.domain == "mechanical_fuel":
         return [
             "Do you know what type of engine the tractor uses?",
@@ -190,6 +216,14 @@ def build_practice_tasks(
     if source_chunks:
         source_task = " Use one retrieved source idea in your answer."
 
+    if intent.domain == "trades_plumbing":
+        return [
+            "Look at one sink without changing anything. Identify the supply lines, shutoff valves, trap, and drain path.",
+            "Write a 5-item safety checklist a beginner should complete before attempting any minor plumbing task.",
+            "Explain why a leak, clog, or slow drain might have more than one possible cause.",
+            "Find your local rules for plumbing work and write down when a licensed plumber is required.",
+        ]
+
     if intent.domain == "mechanical_fuel":
         return [
             "Make a safe checklist of what to verify before considering any tractor fuel change.",
@@ -222,6 +256,14 @@ def build_practice_tasks(
 
 def build_active_recall(intent: NormalizedIntent) -> List[str]:
     topic = intent.clean_topic
+
+    if intent.domain == "trades_plumbing":
+        return [
+            "Without notes, explain how water enters and leaves a house.",
+            "What is the purpose of a shutoff valve?",
+            "Why does a trap exist under a sink?",
+            "What is one reason plumbing work may require code or licensing?",
+        ]
 
     return [
         f"Without notes, explain the main idea of {topic}.",
@@ -262,9 +304,7 @@ def build_source_note(source_chunks: Optional[List[str]]) -> str:
 
 def build_safety_note(intent: NormalizedIntent) -> str:
     if should_require_safety_note(intent.clean_topic):
-        return (
-            "Controlled topic note: this should stay educational, defensive, legal, and safe."
-        )
+        return "Controlled topic note: this should stay educational, defensive, legal, and safe."
 
     if intent.safety_frame != "Use normal educational framing.":
         return intent.safety_frame
@@ -281,7 +321,6 @@ def build_assignment(
     clean_topic = normalize_topic(intent.clean_topic)
     source_chunks = source_chunks or []
     difficulty = choose_difficulty(profile, clean_topic)
-
     questions = build_learning_questions(intent)
 
     return Assignment(
