@@ -47,6 +47,9 @@ def init_state():
         "onboarding_card": None,
         "celebration": None,
         "session_energy": "Normal lesson",
+        "home_input": "",
+        "home_review_text": "",
+        "active_page": "Home",
     }
 
     for key, value in defaults.items():
@@ -63,27 +66,40 @@ def inject_clean_css():
         """
         <style>
         .block-container {
-            padding-top: 2.5rem;
+            padding-top: 2.2rem;
             padding-bottom: 4rem;
-            max-width: 1180px;
+            max-width: 1120px;
         }
+
         div[data-testid="stAlert"] {
             border-radius: 14px;
         }
+
         section[data-testid="stSidebar"] {
             border-right: 1px solid rgba(255,255,255,0.08);
         }
+
+        .od-hero {
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 18px;
+            padding: 1.25rem 1.35rem;
+            margin: 0.75rem 0 1rem 0;
+            background: rgba(255,255,255,0.035);
+        }
+
         .od-card {
             border: 1px solid rgba(255,255,255,0.12);
             border-radius: 16px;
-            padding: 1.1rem 1.2rem;
+            padding: 1.05rem 1.15rem;
             margin: 0.75rem 0;
             background: rgba(255,255,255,0.03);
         }
-        .od-small {
+
+        .od-muted {
             color: rgba(255,255,255,0.68);
             font-size: 0.92rem;
         }
+
         .od-pill {
             display: inline-block;
             border: 1px solid rgba(255,255,255,0.16);
@@ -91,6 +107,19 @@ def inject_clean_css():
             padding: 0.25rem 0.7rem;
             margin: 0.2rem 0.25rem 0.2rem 0;
             font-size: 0.88rem;
+        }
+
+        .od-big-label {
+            font-size: 1.05rem;
+            font-weight: 700;
+            margin-bottom: 0.25rem;
+        }
+
+        @media (max-width: 768px) {
+            .block-container {
+                padding-left: 1rem;
+                padding-right: 1rem;
+            }
         }
         </style>
         """,
@@ -101,11 +130,6 @@ def inject_clean_css():
 def show_app_header():
     st.title("OpenDoor")
     st.caption("Open the door. Find your house.")
-
-    st.info(
-        "OpenDoor is an adaptive learning beta. Ask a quick question, build your learner profile, "
-        "or turn a topic into a study plan."
-    )
 
 
 def show_health_check():
@@ -128,15 +152,15 @@ def show_health_check():
 
 
 def show_sidebar():
-    st.sidebar.header("Start Here")
+    st.sidebar.header("OpenDoor")
 
     profile = get_active_profile()
 
     if profile:
         st.sidebar.success(f"Active profile: {profile.name}")
     else:
-        st.sidebar.warning("No active profile yet.")
-        st.sidebar.caption("Start with Profile for personalized lessons.")
+        st.sidebar.warning("No profile yet")
+        st.sidebar.caption("Quick chat still works. Create a profile for adaptive lessons.")
 
     st.sidebar.divider()
 
@@ -148,7 +172,15 @@ def show_sidebar():
             "Profile",
             "Study + Homework",
         ],
+        index=[
+            "Home",
+            "Chat",
+            "Profile",
+            "Study + Homework",
+        ].index(st.session_state.get("active_page", "Home")),
     )
+
+    st.session_state["active_page"] = page
 
     st.sidebar.divider()
     st.sidebar.caption("Public beta. Debug details are hidden from normal users.")
@@ -156,97 +188,7 @@ def show_sidebar():
     return page
 
 
-def show_home_page():
-    st.header("Home")
-    st.caption("This is where OpenDoor shows the learner model instead of hiding it.")
-
-    profile = get_active_profile()
-    assignment = st.session_state.get("assignment")
-    retrieved_chunks = st.session_state.get("retrieved_chunks", [])
-
-    if not profile:
-        st.markdown(
-            """
-            <div class="od-card">
-                <h3>New here?</h3>
-                <p>Create a learner profile first. OpenDoor needs your goal, level, weak spots, and example style before it can adapt.</p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        st.info("Go to Profile, answer the starter questions, then come back here.")
-        return
-
-    summary = build_session_summary(profile, assignment)
-
-    st.subheader(summary.greeting)
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        with st.container(border=True):
-            st.markdown("### Since last session")
-            for item in summary.since_last_session:
-                st.markdown(f"- {item}")
-
-    with col2:
-        with st.container(border=True):
-            st.markdown("### Next best action")
-            st.write(summary.next_best_action)
-
-            if summary.door_unlocked:
-                st.success(summary.door_unlocked)
-
-    with st.container(border=True):
-        st.markdown("### Forgetting and repair alerts")
-        for item in summary.forgetting_alerts:
-            st.markdown(f"- {item}")
-
-    st.divider()
-
-    st.subheader("Mastery map preview")
-    mastery_nodes = build_mastery_map_preview(profile)
-
-    for node in mastery_nodes:
-        with st.container(border=True):
-            st.markdown(f"**{node.name}**")
-            st.caption(f"Status: {node.status}")
-            st.progress(min(max(node.mastery, 0.0), 1.0))
-            st.caption(f"Forgetting risk: {node.forgetting_risk:.0%}")
-            st.write(node.note)
-
-    st.divider()
-
-    mood = build_mood_energy_check()
-    st.subheader(mood.prompt)
-    selected_energy = st.radio(
-        "Session mode",
-        mood.options,
-        horizontal=True,
-    )
-    st.caption(mood.use_for)
-    st.session_state["session_energy"] = selected_energy
-
-    if assignment:
-        st.divider()
-        st.subheader("Why this was assigned")
-        transparency = build_transparency_card(profile, assignment, retrieved_chunks)
-
-        with st.container(border=True):
-            st.write(f"**Assigned:** {transparency.assigned}")
-            st.write(transparency.why)
-            st.markdown("**Learner model used:**")
-            for item in transparency.learner_model_used:
-                st.markdown(f"- {item}")
-            st.caption(transparency.source_note)
-            st.caption(transparency.user_can_override)
-
-        st.subheader("Where this could go")
-        for path in build_path_direction(assignment.topic):
-            st.markdown(f"- {path}")
-
-
-def quick_chat_answer(message: str) -> str:
+def run_quick_answer(message: str) -> str:
     decision = check_text_safety(message)
 
     if not decision.allowed:
@@ -286,45 +228,339 @@ def quick_chat_answer(message: str) -> str:
     )
 
 
+def build_lesson_from_topic(topic: str, use_rag: bool = True):
+    profile = get_active_profile()
+
+    if not profile:
+        st.warning("Create a profile for full adaptive lesson generation. Quick answers still work without one.")
+        return None, []
+
+    decision = check_topic_request(
+        topic=topic,
+        profile_goals=profile.goals,
+    )
+
+    if not decision.allowed:
+        st.error(decision.reason)
+
+        for restriction in decision.restrictions:
+            st.warning(restriction)
+
+        return None, []
+
+    retrieved_chunks = []
+
+    if use_rag:
+        retrieved_chunks = retrieve_relevant_chunks(
+            query=topic,
+            limit=4,
+            knowledge_file=CONFIG.knowledge_file,
+        )
+
+    assignment = build_assignment(
+        profile=profile,
+        topic=topic,
+        source_chunks=[chunk.text for chunk in retrieved_chunks],
+    )
+
+    st.session_state["assignment"] = assignment
+    st.session_state["retrieved_chunks"] = retrieved_chunks
+    st.session_state["last_topic"] = topic
+    st.session_state["celebration"] = build_celebration_moment(
+        event_type="door_unlocked",
+        concept=assignment.topic,
+    )
+
+    log_beta_event(
+        event_type="assignment_created",
+        message="Assignment created.",
+        metadata={
+            "raw_topic": topic,
+            "clean_topic": assignment.topic,
+            "profile": profile.name,
+            "rag_chunks": len(retrieved_chunks),
+        },
+    )
+
+    return assignment, retrieved_chunks
+
+
+def show_home_action_center():
+    st.markdown(
+        """
+        <div class="od-hero">
+            <h3>Start here</h3>
+            <p class="od-muted">
+            Ask a quick question, build a lesson, or paste homework. OpenDoor will route it.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    user_input = st.text_area(
+        "What do you want to learn, ask, or review?",
+        value=st.session_state.get("home_input", ""),
+        placeholder="Example: how do I start a plumbing career?",
+        height=110,
+        key="home_input_box",
+    )
+
+    st.session_state["home_input"] = user_input
+
+    action = st.radio(
+        "What should OpenDoor do?",
+        [
+            "Quick answer",
+            "Build lesson",
+            "Review homework",
+        ],
+        horizontal=True,
+    )
+
+    use_rag = st.checkbox(
+        "Use source library if available",
+        value=True,
+        help="Uses approved local source chunks when a knowledge base exists.",
+    )
+
+    if action == "Review homework":
+        review_text = st.text_area(
+            "Paste the homework answer or Feynman explanation here",
+            value=st.session_state.get("home_review_text", ""),
+            height=160,
+            key="home_review_box",
+        )
+        st.session_state["home_review_text"] = review_text
+
+    col1, col2, col3 = st.columns([1, 1, 2])
+
+    with col1:
+        run_button = st.button("Run OpenDoor", type="primary", use_container_width=True)
+
+    with col2:
+        clear_button = st.button("Clear", use_container_width=True)
+
+    if clear_button:
+        st.session_state["home_input"] = ""
+        st.session_state["home_review_text"] = ""
+        st.rerun()
+
+    if not run_button:
+        return
+
+    if not user_input.strip():
+        st.error("Type what you want to learn, ask, or review first.")
+        return
+
+    try:
+        if action == "Quick answer":
+            answer = run_quick_answer(user_input)
+            st.session_state["chat_history"].append({"role": "user", "content": user_input})
+            st.session_state["chat_history"].append({"role": "assistant", "content": answer})
+
+            with st.container(border=True):
+                st.markdown("### Quick answer")
+                st.write(answer)
+
+            log_beta_event(
+                event_type="home_quick_answer",
+                message="Home quick answer created.",
+                metadata={"message_length": len(user_input)},
+            )
+
+        elif action == "Build lesson":
+            assignment, retrieved_chunks = build_lesson_from_topic(user_input, use_rag=use_rag)
+
+            if assignment:
+                st.success("Lesson built. Scroll down or open Study + Homework to keep working.")
+                show_lesson_card(assignment, retrieved_chunks)
+
+        elif action == "Review homework":
+            review_text = st.session_state.get("home_review_text", "")
+
+            if not review_text.strip():
+                st.error("Paste the homework answer before reviewing.")
+                return
+
+            decision = check_text_safety(review_text)
+
+            if not decision.allowed:
+                st.error(decision.reason)
+
+                for restriction in decision.restrictions:
+                    st.warning(restriction)
+
+                return
+
+            intent = normalize_intent(user_input)
+            review = review_homework_response(
+                topic=intent.clean_topic,
+                response=review_text,
+            )
+
+            with st.container(border=True):
+                st.markdown("### Homework review")
+                st.text(format_homework_review(review))
+
+            frustration_signal = detect_basic_frustration(review_text)
+
+            if frustration_signal:
+                st.warning(frustration_signal)
+                st.info(
+                    format_tutor_feedback(
+                        correct_piece="You submitted enough text for OpenDoor to inspect your reasoning.",
+                        weak_piece="The response shows signs that the current explanation may not be landing.",
+                        next_step="Try a shorter explanation style or ask OpenDoor to explain it another way.",
+                    )
+                )
+
+            log_beta_event(
+                event_type="home_homework_review",
+                message="Home homework review completed.",
+                metadata={
+                    "topic": intent.clean_topic,
+                    "label": review.label,
+                    "score": review.score,
+                },
+            )
+
+    except Exception as error:
+        log_beta_error(
+            error=error,
+            user_action="home_action_center",
+            metadata={"action": action, "input_length": len(user_input)},
+        )
+
+        st.error(safe_error_message(error))
+
+        if CONFIG.show_debug_errors:
+            st.exception(error)
+
+
+def show_home_page():
+    st.header("Home")
+    st.caption("One place to start. Ask, learn, or review.")
+
+    show_home_action_center()
+
+    st.divider()
+
+    profile = get_active_profile()
+    assignment = st.session_state.get("assignment")
+    retrieved_chunks = st.session_state.get("retrieved_chunks", [])
+
+    if not profile:
+        with st.container(border=True):
+            st.markdown("### No profile yet")
+            st.write("Quick answers work now. Create a profile when you want OpenDoor to adapt to your goals, level, and weak spots.")
+            st.write("Go to Profile when ready.")
+        return
+
+    summary = build_session_summary(profile, assignment)
+
+    st.subheader("Your learner model")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        with st.container(border=True):
+            st.markdown("### Since last session")
+            for item in summary.since_last_session:
+                st.markdown(f"- {item}")
+
+    with col2:
+        with st.container(border=True):
+            st.markdown("### Next best action")
+            st.write(summary.next_best_action)
+
+            if summary.door_unlocked:
+                st.success(summary.door_unlocked)
+
+    with st.expander("Forgetting and repair alerts", expanded=False):
+        for item in summary.forgetting_alerts:
+            st.markdown(f"- {item}")
+
+    with st.expander("Mastery map preview", expanded=False):
+        mastery_nodes = build_mastery_map_preview(profile)
+
+        for node in mastery_nodes:
+            with st.container(border=True):
+                st.markdown(f"**{node.name}**")
+                st.caption(f"Status: {node.status}")
+                st.progress(min(max(node.mastery, 0.0), 1.0))
+                st.caption(f"Forgetting risk: {node.forgetting_risk:.0%}")
+                st.write(node.note)
+
+    mood = build_mood_energy_check()
+
+    with st.expander("Session mode", expanded=False):
+        selected_energy = st.radio(
+            mood.prompt,
+            mood.options,
+            horizontal=True,
+        )
+        st.caption(mood.use_for)
+        st.session_state["session_energy"] = selected_energy
+
+    if assignment:
+        with st.expander("Why this was assigned", expanded=False):
+            transparency = build_transparency_card(profile, assignment, retrieved_chunks)
+
+            st.write(f"**Assigned:** {transparency.assigned}")
+            st.write(transparency.why)
+            st.markdown("**Learner model used:**")
+
+            for item in transparency.learner_model_used:
+                st.markdown(f"- {item}")
+
+            st.caption(transparency.source_note)
+            st.caption(transparency.user_can_override)
+
+        with st.expander("Where this could go", expanded=False):
+            for path in build_path_direction(assignment.topic):
+                st.markdown(f"- {path}")
+
+
 def show_chat_page():
     st.header("Chat")
     st.caption("Ask quick questions without creating homework or a full course.")
 
-    for entry in st.session_state["chat_history"]:
-        with st.chat_message(entry["role"]):
-            st.write(entry["content"])
+    prompt = st.text_input(
+        "Quick question",
+        placeholder="Example: what is a shutoff valve?",
+    )
 
-    message = st.chat_input("Ask a quick question...")
-
-    if message:
-        st.session_state["chat_history"].append({"role": "user", "content": message})
+    if st.button("Ask", type="primary"):
+        if not prompt.strip():
+            st.error("Type a question first.")
+            return
 
         try:
-            answer = quick_chat_answer(message)
+            answer = run_quick_answer(prompt)
+            st.session_state["chat_history"].append({"role": "user", "content": prompt})
             st.session_state["chat_history"].append({"role": "assistant", "content": answer})
-
-            log_beta_event(
-                event_type="chat_message",
-                message="Chat prompt answered.",
-                metadata={
-                    "message_length": len(message),
-                    "has_profile": get_active_profile() is not None,
-                },
-            )
-
             st.rerun()
 
         except Exception as error:
             log_beta_error(
                 error=error,
                 user_action="chat_message",
-                metadata={"message_length": len(message)},
+                metadata={"message_length": len(prompt)},
             )
 
             st.error(safe_error_message(error))
 
             if CONFIG.show_debug_errors:
                 st.exception(error)
+
+    if st.session_state["chat_history"]:
+        st.divider()
+        st.subheader("Conversation")
+
+    for entry in st.session_state["chat_history"]:
+        with st.chat_message(entry["role"]):
+            st.write(entry["content"])
 
 
 def show_profile_page():
@@ -398,8 +634,10 @@ def show_profile_page():
 
                 if not decision.allowed:
                     st.error(decision.reason)
+
                     for restriction in decision.restrictions:
                         st.warning(restriction)
+
                     return
 
                 profile = build_profile(
@@ -524,8 +762,9 @@ def show_lesson_card(assignment, retrieved_chunks):
     if assignment.safety_note:
         st.warning(assignment.safety_note)
 
-    st.subheader("What OpenDoor understood")
-    st.write(assignment.summary_card)
+    with st.container(border=True):
+        st.subheader("What OpenDoor understood")
+        st.write(assignment.summary_card)
 
     celebration = st.session_state.get("celebration")
 
@@ -539,8 +778,9 @@ def show_lesson_card(assignment, retrieved_chunks):
 
             st.caption(celebration.next_hint)
 
-    st.subheader("Why this matters")
-    st.write(assignment.why_this_matters)
+    with st.container(border=True):
+        st.subheader("Why this matters")
+        st.write(assignment.why_this_matters)
 
     with st.expander("Learn", expanded=True):
         st.write(assignment.virtual_lesson)
@@ -592,6 +832,7 @@ def show_study_page():
 
     if not profile:
         st.warning("Create or load a profile first for personalized lessons.")
+        st.info("Quick answers still work from Home or Chat.")
         return
 
     topic = st.text_input(
@@ -607,61 +848,15 @@ def show_study_page():
     )
 
     if st.button("Build my lesson", type="primary"):
+        if not topic.strip():
+            st.error("Enter a topic first.")
+            return
+
         try:
-            if not topic.strip():
-                st.error("Enter a topic first.")
-                return
+            assignment, retrieved_chunks = build_lesson_from_topic(topic, use_rag=use_rag)
 
-            st.session_state["last_topic"] = topic
-
-            decision = check_topic_request(
-                topic=topic,
-                profile_goals=profile.goals,
-            )
-
-            if not decision.allowed:
-                st.error(decision.reason)
-
-                for restriction in decision.restrictions:
-                    st.warning(restriction)
-
-                return
-
-            retrieved_chunks = []
-
-            if use_rag:
-                retrieved_chunks = retrieve_relevant_chunks(
-                    query=topic,
-                    limit=4,
-                    knowledge_file=CONFIG.knowledge_file,
-                )
-
-            assignment = build_assignment(
-                profile=profile,
-                topic=topic,
-                source_chunks=[chunk.text for chunk in retrieved_chunks],
-            )
-
-            st.session_state["assignment"] = assignment
-            st.session_state["retrieved_chunks"] = retrieved_chunks
-
-            celebration = build_celebration_moment(
-                event_type="door_unlocked",
-                concept=assignment.topic,
-            )
-
-            st.session_state["celebration"] = celebration
-
-            log_beta_event(
-                event_type="assignment_created",
-                message="Assignment created.",
-                metadata={
-                    "raw_topic": topic,
-                    "clean_topic": assignment.topic,
-                    "profile": profile.name,
-                    "rag_chunks": len(retrieved_chunks),
-                },
-            )
+            if assignment:
+                st.success("Lesson built.")
 
         except Exception as error:
             log_beta_error(
