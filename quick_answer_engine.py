@@ -39,6 +39,11 @@ SPELLING_FIXES = {
     "thermo dynamics": "thermodynamics",
     "ohms": "ohm's",
     "ohms law": "ohm's law",
+    "conlnog": "conlang",
+    "cohlnong": "conlang",
+    "conlong": "conlang",
+    "plumming": "plumbing",
+    "pluming": "plumbing",
 }
 
 
@@ -140,11 +145,11 @@ def answer_known_fact(message: str) -> Optional[QuickAnswer]:
             title="First law of thermodynamics",
             answer=(
                 "The first law of thermodynamics says energy cannot be created or destroyed, "
-                "only transferred or changed from one form to another. In practical terms, a system's "
-                "energy changes when heat enters or leaves and when work is done by or on the system."
+                "only transferred or changed from one form to another. A system's energy changes "
+                "when heat enters or leaves and when work is done by or on the system."
             ),
             next_step=(
-                "Simple check: if heat is added to gas in a piston and the piston moves upward, "
+                "Check your understanding: if heat is added to gas in a piston and the piston moves upward, "
                 "some energy became work and some may remain as internal energy."
             ),
         )
@@ -158,7 +163,7 @@ def answer_known_fact(message: str) -> Optional[QuickAnswer]:
                 "In plain language, energy spreads out and systems naturally move toward less usable energy "
                 "unless work is done to maintain order."
             ),
-            next_step="A good next step is comparing useful energy, wasted heat, and entropy in an engine.",
+            next_step="Compare useful energy, wasted heat, and entropy in an engine.",
         )
 
     if "ohm's law" in lowered or "ohm law" in lowered:
@@ -189,7 +194,7 @@ def answer_known_fact(message: str) -> Optional[QuickAnswer]:
             answer_type="known_fact",
             title="Resistor",
             answer=(
-                "A resistor limits current in a circuit. It does not simply 'use up electricity.' "
+                "A resistor limits current in a circuit. It does not simply use up electricity. "
                 "It controls how much current can flow, often protecting parts like LEDs from too much current."
             ),
             next_step="A good first task is calculating the resistor needed for an LED.",
@@ -207,6 +212,45 @@ def answer_known_fact(message: str) -> Optional[QuickAnswer]:
         )
 
     return None
+
+
+def answer_racing(message: str) -> Optional[QuickAnswer]:
+    lowered = normalize_question_text(message)
+
+    racing_terms = [
+        "stock car",
+        "nascar",
+        "car racing",
+        "racing",
+        "race car",
+    ]
+
+    if not any(term in lowered for term in racing_terms):
+        return None
+
+    if "first rule" in lowered or "1st rule" in lowered:
+        return QuickAnswer(
+            answer_type="sports_racing",
+            title="First rule of stock car racing",
+            answer=(
+                "The practical first rule is safety and control. Know the rules of the track, keep control of the car, "
+                "respect flags and officials, and do not drive in a way that puts other drivers, crews, or spectators at risk. "
+                "Speed matters, but controlled driving comes first."
+            ),
+            next_step=(
+                "First door: learn the flag system, basic racing line, passing rules, and what to do when something goes wrong."
+            ),
+        )
+
+    return QuickAnswer(
+        answer_type="sports_racing",
+        title="Stock car racing basics",
+        answer=(
+            "Stock car racing is built around controlled speed, racecraft, track awareness, car setup, and safety rules. "
+            "Beginners should learn flags, the racing line, braking points, passing etiquette, and basic vehicle control first."
+        ),
+        next_step="Start with flags, track safety, and the racing line before studying advanced strategy.",
+    )
 
 
 def answer_plumbing_start(message: str) -> Optional[QuickAnswer]:
@@ -289,6 +333,29 @@ def answer_basic_science(message: str) -> Optional[QuickAnswer]:
     return None
 
 
+def build_unknown_quick_answer(message: str) -> QuickAnswer:
+    intent = normalize_intent(message)
+
+    if intent.needs_clarification:
+        return QuickAnswer(
+            answer_type="clarification",
+            title="I need one clarification",
+            answer=intent.clarification_question,
+            next_step="Pick one of the suggested topics or rephrase the request.",
+        )
+
+    return QuickAnswer(
+        answer_type="unknown_quick_answer",
+        title="Not in quick-answer mode yet",
+        answer=(
+            f"I can route this as a learning topic: {intent.clean_topic}.\n\n"
+            "But I do not have a direct quick-answer card for this yet. "
+            "Use Build lesson if you want OpenDoor to turn it into a learning path."
+        ),
+        next_step=f"Switch to Build lesson for: {intent.clean_topic}.",
+    )
+
+
 def build_quick_answer(message: str) -> QuickAnswer:
     clean_message = message.strip()
 
@@ -308,52 +375,27 @@ def build_quick_answer(message: str) -> QuickAnswer:
         except Exception:
             pass
 
-    known = answer_known_fact(normalized_message)
+    quick_answer_routes = [
+        answer_known_fact,
+        answer_racing,
+        answer_plumbing_start,
+        answer_conlang,
+        answer_basic_science,
+    ]
 
-    if known:
-        return known
+    for route in quick_answer_routes:
+        answer = route(normalized_message)
 
-    plumbing = answer_plumbing_start(normalized_message)
+        if answer:
+            return answer
 
-    if plumbing:
-        return plumbing
-
-    conlang = answer_conlang(normalized_message)
-
-    if conlang:
-        return conlang
-
-    science = answer_basic_science(normalized_message)
-
-    if science:
-        return science
-
-    intent = normalize_intent(clean_message)
-
-    if intent.needs_clarification:
-        return QuickAnswer(
-            answer_type="clarification",
-            title="I need one clarification",
-            answer=intent.clarification_question,
-            next_step="Pick one of the suggested topics or rephrase the request.",
-        )
-
-    return QuickAnswer(
-        answer_type="learning_route",
-        title=intent.clean_topic,
-        answer=(
-            f"I read this as: {intent.clean_topic}.\n\n"
-            f"{intent.learning_goal}\n\n"
-            f"First door: {intent.first_door}"
-        ),
-        next_step=intent.next_best_action,
-    )
+    return build_unknown_quick_answer(clean_message)
 
 
 def format_quick_answer(answer: QuickAnswer, profile=None) -> str:
     profile_line = ""
 
-    if profile:
+    if profile and answer.answer_type not in {"math", "known_fact"}:
         profile_line = (
             f"\n\nProfile used: {profile.name}, level {profile.level}, goal: {profile.goals or 'not set'}."
         )
