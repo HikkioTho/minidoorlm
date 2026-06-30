@@ -2,24 +2,29 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
+from intent_normalizer import NormalizedIntent, normalize_intent
 from learning_guard import should_require_safety_note
+from learning_questions import LearningQuestionSet, build_learning_questions
 from student_profile import StudentProfile
 
 
 @dataclass
 class Assignment:
     topic: str
+    raw_topic: str
     level: str
+    intent: NormalizedIntent
+    learning_questions: LearningQuestionSet
+    summary_card: str
     virtual_lesson: str
-    warm_up: List[str]
-    reading_task: List[str]
-    starter_resources: List[str]
-    ending_resources: List[str]
-    practice_problems: List[str]
+    why_this_matters: str
+    prerequisite_check: List[str]
+    practice_tasks: List[str]
     active_recall: List[str]
     feynman_prompt: str
     mini_project: str
     review_schedule: List[str]
+    source_note: str
     safety_note: str
 
 
@@ -31,7 +36,9 @@ def topic_in_list(topic: str, topics: List[str]) -> bool:
     normalized_topic = topic.lower()
 
     for item in topics:
-        if item.lower() in normalized_topic or normalized_topic in item.lower():
+        item_lower = item.lower()
+
+        if item_lower in normalized_topic or normalized_topic in item_lower:
             return True
 
     return False
@@ -66,22 +73,33 @@ def summarize_source_chunks(source_chunks: Optional[List[str]]) -> List[str]:
     summaries = []
 
     for chunk in source_chunks[:4]:
-        clean = " ".join(chunk.split())
+        clean = " ".join(str(chunk or "").split())
 
-        if len(clean) > 220:
-            clean = clean[:220].rstrip() + "..."
+        if len(clean) > 240:
+            clean = clean[:240].rstrip() + "..."
 
-        summaries.append(clean)
+        if clean:
+            summaries.append(clean)
 
     return summaries
 
 
+def build_summary_card(profile: StudentProfile, intent: NormalizedIntent, difficulty: str) -> str:
+    return (
+        f"OpenDoor reads your request as: {intent.clean_topic}.\n\n"
+        f"Goal: {intent.learning_goal}\n\n"
+        f"Level route: {difficulty}.\n\n"
+        f"Profile use: This lesson is shaped around {profile.name}'s goal: {profile.goals}."
+    )
+
+
 def build_virtual_lesson(
     profile: StudentProfile,
-    topic: str,
+    intent: NormalizedIntent,
     difficulty: str,
     source_chunks: Optional[List[str]] = None,
 ) -> str:
+    topic = intent.clean_topic
     analogy = profile.analogy_preferences or "real-world examples"
     source_summaries = summarize_source_chunks(source_chunks)
 
@@ -89,114 +107,136 @@ def build_virtual_lesson(
 
     if source_summaries:
         source_line = (
-            " Use the retrieved local study sources as grounding. "
-            f"One relevant source idea is: {source_summaries[0]}"
+            f"\n\nSource-grounded note: One retrieved source idea says: {source_summaries[0]}"
         )
 
     if difficulty == "supportive":
         return (
-            f"Today, {profile.name} will learn {topic} slowly and clearly. "
-            f"We will start with the core idea, use {analogy} for analogies, "
-            f"then practice one small skill at a time.{source_line}"
+            f"Start with the safe basic idea of {topic}. "
+            f"The point is not to memorize a definition. The point is to understand the decision points, "
+            f"common mistakes, and what someone should check before acting. "
+            f"We will use {analogy} where helpful."
+            f"{source_line}"
         )
 
     if difficulty in {"challenge", "advanced", "advanced_challenge"}:
         return (
-            f"Today, {profile.name} will strengthen {topic} with a more challenging lesson. "
-            f"We will connect the concept to {profile.goals}, use {analogy} when helpful, "
-            f"and push beyond memorization into explanation and application.{source_line}"
+            f"For {topic}, do not stop at the surface explanation. "
+            f"Connect the idea to {profile.goals}, identify the constraints, and explain where beginners get it wrong. "
+            f"Use {analogy} if it helps make the concept easier to reason about."
+            f"{source_line}"
         )
 
     return (
-        f"Today, {profile.name} will learn the basics of {topic}. "
-        f"The lesson will use {analogy} to make the idea easier to remember, "
-        f"then end with practice and recall.{source_line}"
+        f"{topic} is the clean topic OpenDoor extracted from your request. "
+        f"The lesson should focus on what it means, why it matters, what can go wrong, "
+        f"and what first step a learner should take. "
+        f"We will use {analogy} where helpful."
+        f"{source_line}"
     )
 
 
-def build_resources(
-    topic: str,
-    stage: str,
-    source_chunks: Optional[List[str]] = None,
-) -> List[str]:
-    resources = [
-        f"Find one beginner-friendly article, documentation page, or textbook section about {topic}.",
-        f"Find one short visual explanation about {topic}.",
-        f"Write down one question you still have about {topic}.",
-        f"At the {stage} of the lesson, compare what you know now against your first question.",
-    ]
-
-    if source_chunks:
-        resources.insert(
-            0,
-            "Review the retrieved local source chunks shown in the OpenDoor beta before using outside resources.",
+def build_why_this_matters(intent: NormalizedIntent, profile: StudentProfile) -> str:
+    if intent.domain == "mechanical_fuel":
+        return (
+            "This matters because fuel and engine compatibility are safety-sensitive. "
+            "A learner needs to understand the options and risks before thinking about real changes."
         )
 
-    return resources
+    if profile.goals:
+        return f"This matters because it connects to your stated goal: {profile.goals}."
+
+    return f"This matters because {intent.clean_topic} is easier to remember when you know where it is used."
 
 
-def build_practice(
+def build_prerequisite_check(intent: NormalizedIntent) -> List[str]:
+    if intent.domain == "mechanical_fuel":
+        return [
+            "Do you know what type of engine the tractor uses?",
+            "Do you have the manufacturer manual or fuel recommendation?",
+            "Do you understand the difference between learning options and modifying equipment?",
+        ]
+
+    if intent.domain == "electronics":
+        return [
+            "Do you know the basic vocabulary for this topic?",
+            "Can you point to where this appears in a real circuit?",
+            "Can you explain one beginner mistake before practicing?",
+        ]
+
+    if intent.domain == "programming":
+        return [
+            "Do you know the basic terms needed for this topic?",
+            "Can you explain what problem this solves?",
+            "Can you trace one simple example?",
+        ]
+
+    return [
+        "Can you explain the topic in one sentence?",
+        "Can you name one real example?",
+        "Can you name one thing beginners usually misunderstand?",
+    ]
+
+
+def build_practice_tasks(
     profile: StudentProfile,
-    topic: str,
+    intent: NormalizedIntent,
     difficulty: str,
     source_chunks: Optional[List[str]] = None,
 ) -> List[str]:
-    source_prompt = ""
+    topic = intent.clean_topic
+    source_task = ""
 
     if source_chunks:
-        source_prompt = " Use at least one retrieved local source idea in your answer."
+        source_task = " Use one retrieved source idea in your answer."
+
+    if intent.domain == "mechanical_fuel":
+        return [
+            "Make a safe checklist of what to verify before considering any tractor fuel change.",
+            "Explain why diesel, gasoline, and alternative fuels cannot be treated as interchangeable.",
+            "List 3 questions you would ask a qualified mechanic or check in the manual.",
+        ]
 
     if difficulty == "supportive":
         return [
-            f"Define {topic} in one sentence.{source_prompt}",
-            f"List three words that seem important for {topic}.",
-            f"Give one example of where {topic} appears in real life.",
-        ]
-
-    if difficulty == "beginner_plus":
-        return [
-            f"Explain {topic} using an analogy based on {profile.analogy_preferences or 'daily life'}.{source_prompt}",
-            f"Create a small example problem about {topic} and solve it.",
-            f"Identify one common beginner mistake related to {topic}.",
+            f"Explain {topic} in one plain sentence.{source_task}",
+            f"List three important terms connected to {topic}.",
+            f"Give one real-world example of {topic}.",
         ]
 
     if difficulty in {"challenge", "advanced", "advanced_challenge"}:
         return [
-            f"Explain {topic} to a beginner without using jargon.{source_prompt}",
-            f"Create a harder problem involving {topic} and solve it step by step.",
-            f"Connect {topic} to {profile.goals} and explain why it matters.",
-            f"Design a mini test that would prove someone understands {topic}.",
+            f"Explain {topic} to a beginner without jargon.{source_task}",
+            f"Create a harder example involving {topic} and solve or explain it.",
+            f"Connect {topic} to {profile.goals}.",
+            f"Design a mini test that proves someone understands {topic}.",
         ]
 
     return [
-        f"Define {topic}.{source_prompt}",
+        f"Define {topic} in plain language.{source_task}",
         f"Give two examples of {topic}.",
         f"Explain why {topic} matters.",
         f"Create one practice question about {topic}.",
     ]
 
 
-def build_active_recall(topic: str, difficulty: str) -> List[str]:
-    questions = [
+def build_active_recall(intent: NormalizedIntent) -> List[str]:
+    topic = intent.clean_topic
+
+    return [
         f"Without notes, explain the main idea of {topic}.",
         f"What is one mistake someone might make when learning {topic}?",
-        f"What is one example of {topic} in a real situation?",
+        f"What is one practical example of {topic}?",
+        "What should you check before moving to a harder version of this topic?",
     ]
-
-    if difficulty in {"challenge", "advanced", "advanced_challenge"}:
-        questions.append(
-            f"How would you teach {topic} to someone who thinks they already understand it?"
-        )
-
-    return questions
 
 
 def build_review_schedule(profile: StudentProfile) -> List[str]:
     now = datetime.now(timezone.utc)
 
-    if profile.current_streak >= 5:
+    if getattr(profile, "current_streak", 0) >= 5:
         intervals = [1, 3, 7, 14]
-    elif profile.current_streak >= 2:
+    elif getattr(profile, "current_streak", 0) >= 2:
         intervals = [1, 2, 5, 10]
     else:
         intervals = [1, 2, 4, 7]
@@ -205,11 +245,31 @@ def build_review_schedule(profile: StudentProfile) -> List[str]:
 
     for days in intervals:
         due_date = now + timedelta(days=days)
-        schedule.append(
-            f"Review in {days} day(s): {due_date.date().isoformat()}"
-        )
+        schedule.append(f"Review in {days} day(s): {due_date.date().isoformat()}")
 
     return schedule
+
+
+def build_source_note(source_chunks: Optional[List[str]]) -> str:
+    if source_chunks:
+        return "This lesson used retrieved local source chunks. Review the source section before trusting details."
+
+    return (
+        "No source library is connected for this topic yet. "
+        "This lesson is using OpenDoor's built-in lesson structure."
+    )
+
+
+def build_safety_note(intent: NormalizedIntent) -> str:
+    if should_require_safety_note(intent.clean_topic):
+        return (
+            "Controlled topic note: this should stay educational, defensive, legal, and safe."
+        )
+
+    if intent.safety_frame != "Use normal educational framing.":
+        return intent.safety_frame
+
+    return ""
 
 
 def build_assignment(
@@ -217,104 +277,38 @@ def build_assignment(
     topic: str,
     source_chunks: Optional[List[str]] = None,
 ) -> Assignment:
-    clean_topic = normalize_topic(topic)
+    intent = normalize_intent(topic)
+    clean_topic = normalize_topic(intent.clean_topic)
+    source_chunks = source_chunks or []
     difficulty = choose_difficulty(profile, clean_topic)
 
-    source_chunks = source_chunks or []
-
-    safety_note = ""
-
-    if should_require_safety_note(clean_topic):
-        safety_note = (
-            "Safety Boundary: This assignment must stay educational, defensive, "
-            "legal, and authorized. Do not create operational harm instructions."
-        )
-
-    virtual_lesson = build_virtual_lesson(
-        profile=profile,
-        topic=clean_topic,
-        difficulty=difficulty,
-        source_chunks=source_chunks,
-    )
-
-    warm_up = [
-        f"What do you already know about {clean_topic}?",
-        f"What do you think will be difficult about {clean_topic}?",
-        f"How does {clean_topic} connect to your goal: {profile.goals}?",
-    ]
-
-    if source_chunks:
-        warm_up.append(
-            "Before answering, read the retrieved local source chunks and mark one idea that seems important."
-        )
-
-    starter_resources = build_resources(
-        topic=clean_topic,
-        stage="start",
-        source_chunks=source_chunks,
-    )
-
-    ending_resources = build_resources(
-        topic=clean_topic,
-        stage="end",
-        source_chunks=source_chunks,
-    )
-
-    reading_task = [
-        f"Before practice, read or watch one beginner-friendly explanation of {clean_topic}.",
-        "Write down three key terms.",
-        "Write one sentence explaining why this topic matters.",
-    ]
-
-    if source_chunks:
-        reading_task.insert(
-            0,
-            "Read the retrieved local source chunks first. Treat them as the starting study material.",
-        )
-
-    practice_problems = build_practice(
-        profile=profile,
-        topic=clean_topic,
-        difficulty=difficulty,
-        source_chunks=source_chunks,
-    )
-
-    active_recall = build_active_recall(
-        topic=clean_topic,
-        difficulty=difficulty,
-    )
-
-    feynman_prompt = (
-        f"Explain {clean_topic} like you are teaching a smart 12-year-old. "
-        "Use plain language, one analogy, and one example. "
-        "Then list what still feels unclear."
-    )
-
-    if source_chunks:
-        feynman_prompt += (
-            " Include one idea from the retrieved local source chunks, but explain it in your own words."
-        )
-
-    mini_project = (
-        f"Create a small artifact that proves you understand {clean_topic}. "
-        "This could be notes, a diagram, code, a solved example, a short demo, "
-        "or a one-page explanation."
-    )
-
-    review_schedule = build_review_schedule(profile)
+    questions = build_learning_questions(intent)
 
     return Assignment(
         topic=clean_topic,
+        raw_topic=intent.raw_input,
         level=profile.level,
-        virtual_lesson=virtual_lesson,
-        warm_up=warm_up,
-        reading_task=reading_task,
-        starter_resources=starter_resources,
-        ending_resources=ending_resources,
-        practice_problems=practice_problems,
-        active_recall=active_recall,
-        feynman_prompt=feynman_prompt,
-        mini_project=mini_project,
-        review_schedule=review_schedule,
-        safety_note=safety_note,
+        intent=intent,
+        learning_questions=questions,
+        summary_card=build_summary_card(profile, intent, difficulty),
+        virtual_lesson=build_virtual_lesson(
+            profile=profile,
+            intent=intent,
+            difficulty=difficulty,
+            source_chunks=source_chunks,
+        ),
+        why_this_matters=build_why_this_matters(intent, profile),
+        prerequisite_check=build_prerequisite_check(intent),
+        practice_tasks=build_practice_tasks(
+            profile=profile,
+            intent=intent,
+            difficulty=difficulty,
+            source_chunks=source_chunks,
+        ),
+        active_recall=build_active_recall(intent),
+        feynman_prompt=questions.feynman,
+        mini_project=questions.next_step,
+        review_schedule=build_review_schedule(profile),
+        source_note=build_source_note(source_chunks),
+        safety_note=build_safety_note(intent),
     )

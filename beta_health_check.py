@@ -30,19 +30,26 @@ def check_directory(path: Path, label: str, create: bool = True) -> List[str]:
 def run_beta_health_check() -> HealthCheckResult:
     config = get_beta_config()
 
-    warnings = []
-    errors = []
+    warnings: List[str] = []
+    errors: List[str] = []
 
-    errors.extend(check_directory(config.runtime_dir, "Runtime directory"))
-    errors.extend(check_directory(config.profile_dir, "Profile directory"))
-    errors.extend(check_directory(config.logs_dir, "Logs directory"))
-    errors.extend(check_directory(config.exports_dir, "Exports directory"))
-    errors.extend(check_directory(config.public_source_dir, "Public source directory"))
-    errors.extend(check_directory(config.knowledge_dir, "Knowledge directory"))
+    required_dirs = [
+        (config.runtime_dir, "Runtime directory"),
+        (config.profile_dir, "Profile directory"),
+        (config.logs_dir, "Logs directory"),
+        (config.exports_dir, "Exports directory"),
+        (config.upload_dir, "Upload directory"),
+        (config.analytics_dir, "Analytics directory"),
+        (config.public_source_dir, "Public source directory"),
+        (config.knowledge_dir, "Knowledge directory"),
+    ]
+
+    for path, label in required_dirs:
+        errors.extend(check_directory(path, label))
 
     if not config.knowledge_file.exists():
         warnings.append(
-            "RAG knowledge file is missing. Run python ingest_sources.py before expecting source retrieval."
+            "No local knowledge file found. Lessons will still work, but source-grounded RAG will be limited."
         )
 
     gitignore = Path(".gitignore")
@@ -55,6 +62,7 @@ def run_beta_health_check() -> HealthCheckResult:
             "data/sources/private/",
             "*.pt",
             "training_samples/",
+            ".streamlit/secrets.toml",
         ]
 
         for item in recommended_ignores:
